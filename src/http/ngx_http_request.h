@@ -272,6 +272,8 @@ typedef struct {
     off_t                             content_length_n;
     time_t                            date_time;
     time_t                            last_modified_time;
+
+    ngx_str_t                         final_response;
 } ngx_http_headers_out_t;
 
 

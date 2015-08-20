@@ -608,6 +608,11 @@ ngx_http_header_filter(ngx_http_request_t *r)
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
                    "%*s", (size_t) (b->last - b->pos), b->pos);
 
+    /* prepare the complete headers for eventual logging - strip out the last "\r\n" */
+    r->headers_out.final_response.len = b->last - b->pos - (sizeof(CRLF) - 1);
+    r->headers_out.final_response.data = ngx_palloc(r->pool, r->headers_out.final_response.len);
+    ngx_memcpy(r->headers_out.final_response.data, b->pos, r->headers_out.final_response.len);
+
     /* the end of HTTP header */
     *b->last++ = CR; *b->last++ = LF;
 

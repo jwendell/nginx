@@ -100,6 +100,10 @@ static ngx_int_t ngx_http_variable_request_time(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 static ngx_int_t ngx_http_variable_status(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
+static ngx_int_t ngx_http_variable_http_all(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data);
+static ngx_int_t ngx_http_variable_sent_http_all(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data);
 
 static ngx_int_t ngx_http_variable_sent_content_type(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
@@ -173,6 +177,9 @@ static ngx_http_variable_t  ngx_http_core_variables[] = {
 
     { ngx_string("http_cookie"), NULL, ngx_http_variable_cookies,
       offsetof(ngx_http_request_t, headers_in.cookies), 0, 0 },
+
+    { ngx_string("http_all"), NULL, ngx_http_variable_http_all, 0, 0, 0 },
+    { ngx_string("sent_http_all"), NULL, ngx_http_variable_sent_http_all, 0, 0, 0 },
 
     { ngx_string("content_length"), NULL, ngx_http_variable_content_length,
       0, 0, 0 },
@@ -1703,6 +1710,91 @@ ngx_http_variable_status(ngx_http_request_t *r,
     }
 
     v->len = ngx_sprintf(v->data, "%03ui", status) - v->data;
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_variable_sent_http_all(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+    v->len = r->headers_out.final_response.len;
+    v->data = r->headers_out.final_response.data;
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_variable_http_all(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+    ngx_uint_t        i;
+    ngx_list_part_t  *part;
+    ngx_table_elt_t  *header;
+    u_char           *buf;
+
+    v->len = 0;
+
+    part = &r->headers_in.headers.part;
+    header = part->elts;
+    for (i = 0; /* void */ ; i++) {
+
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+
+        if (header[i].hash == 0) {
+            continue;
+        }
+
+        v->len += header[i].key.len + header[i].value.len + sizeof(": \r\n") - 1;
+    }
+
+    buf = ngx_pnalloc(r->pool, v->len);
+    if (buf == NULL) {
+        return NGX_ERROR;
+    }
+    v->data = buf;
+
+    part = &r->headers_in.headers.part;
+    header = part->elts;
+    for (i = 0; /* void */ ; i++) {
+
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            header = part->elts;
+            i = 0;
+        }
+
+        if (header[i].hash == 0) {
+            continue;
+        }
+
+        buf = ngx_sprintf(buf, "%V: %V\r\n", &header[i].key, &header[i].value);
+    }
+
+    if (v->len > 0) {
+        v->len -= sizeof(CRLF) - 1;
+    }
+
     v->valid = 1;
     v->no_cacheable = 0;
     v->not_found = 0;
